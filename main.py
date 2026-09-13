@@ -249,7 +249,7 @@ class WhitelistPanelView(discord.ui.View):
 
         current_hwid = data.get(b"hwid", b"").decode("utf-8")
         status_str = data.get(b"status", b"active").decode("utf-8")
-        created_at = data.get(b"created_at", b"不明").decode("utf-8")
+   　　　created_at = data.get(b"created_at", "不明".encode("utf-8")).decode("utf-8")
 
         embed = discord.Embed(
             title="🔑 ライセンスキー情報",
