@@ -1,0 +1,83 @@
+-- =============================================================================
+-- Roblox Executor 向け ホワイトリストクライアントローダー (Lua)
+-- =============================================================================
+
+-- ⚙️ [ユーザー設定箇所] Discordパネルから取得したキーを入力します
+getgenv().Key = getgenv().Key or "RBX-XXXX-XXXX-XXXX"
+
+-- 🌐 [管理者設定箇所] あなたのFastAPIサーバーのURLを設定してください
+local API_URL = "http://YOUR_SERVER_IP_OR_DOMAIN:8000/verify"
+
+-- HWID 取得関数 (主要Executor互換)
+local function getClientHWID()
+    local hwid = nil
+    if gethwid then
+        hwid = gethwid()
+    elseif get_hwid then
+        hwid = get_hwid()
+    elseif syn and syn.get_hwid then
+        hwid = syn.get_hwid()
+    elseif fluxus and fluxus.get_device_id then
+        hwid = fluxus.get_device_id()
+    elseif KRNL_LOADED and getgenv().krnl_get_hwid then
+        hwid = getgenv().krnl_get_hwid()
+    else
+        pcall(function()
+            hwid = game:GetService("RbxAnalyticsService"):GetClientId()
+        end)
+    end
+    return hwid or "UNKNOWN_HWID_" .. tostring(game:GetService("Players").LocalPlayer.UserId)
+end
+
+-- HTTP リクエスト送信
+local function sendRequest(url, method, body, headers)
+    local httpRequest = (syn and syn.request) or (http and http.request) or http_request or request
+    if not httpRequest then
+        error("[Whitelist Error] お使いのExecutorは HTTP Request API をサポートしていません。")
+    end
+    return httpRequest({
+        Url = url,
+        Method = method or "GET",
+        Headers = headers or { ["Content-Type"] = "application/json" },
+        Body = body
+    })
+end
+
+-- 認証実行シーケンス
+local HttpService = game:GetService("HttpService")
+local clientHWID = getClientHWID()
+
+local response = sendRequest(API_URL, "POST", HttpService:JSONEncode({
+    key = getgenv().Key,
+    hwid = clientHWID
+}))
+
+if response and response.StatusCode == 200 then
+    local data = HttpService:JSONDecode(response.Body)
+    print("✅ [Whitelist] " .. (data.message or "認証成功"))
+
+    -- サーバーから返却された保護スクリプトを実行
+    if data.script then
+        local executable, compileErr = loadstring(data.script)
+        if executable then
+            executable()
+        else
+            warn("[Whitelist Error] 構文エラー: " .. tostring(compileErr))
+        end
+    end
+else
+    local errMsg = "認証エラー"
+    pcall(function()
+        local errData = HttpService:JSONDecode(response.Body)
+        errMsg = errData.detail or errMsg
+    end)
+
+    warn("❌ [Whitelist 拒絶] " .. errMsg)
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "Whitelist Error",
+            Text = errMsg,
+            Duration = 8
+        })
+    end)
+end
